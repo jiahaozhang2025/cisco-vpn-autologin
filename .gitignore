@@ -1,0 +1,5 @@
+# Never commit saved logins or settings (the script keeps them in %APPDATA%, but just in case)
+*.xml
+*.psd1
+*.last-failure
+*.txt
