@@ -4,19 +4,22 @@
   6-digit 2FA code every time.
 
 .DESCRIPTION
-  Run -Setup once. It asks for the VPN server, username, password and 2FA secret key, saves the
-  settings to %APPDATA%\cisco-vpn-autologin\<name>.psd1, and saves the password and secret
-  encrypted with Windows DPAPI to <name>.xml (only your Windows account on this PC can decrypt
-  them). After that, running the script generates the current code (TOTP, the same code your
-  authenticator app shows) and logs in through vpncli.exe.
+  Run -Install (or double-click Install.cmd) once. It asks for the VPN server, username, password
+  and 2FA secret key, saves the settings to %APPDATA%\cisco-vpn-autologin\<name>.psd1, and saves
+  the password and secret encrypted with Windows DPAPI to <name>.xml (only your Windows account on
+  this PC can decrypt them). It then copies itself to %LOCALAPPDATA%\Programs\cisco-vpn-autologin
+  and makes desktop and Start menu shortcuts. After that, connecting generates the current code
+  (TOTP, the same code your authenticator app shows) and logs in through vpncli.exe.
 
 .EXAMPLE
-  .\cisco-vpn-autologin.ps1 -Setup             # one-time setup (re-run to change password or secret)
+  .\cisco-vpn-autologin.ps1 -Install           # one-time setup, plus desktop and Start menu shortcuts
+  .\cisco-vpn-autologin.ps1 -Setup             # setup only (re-run to change password or secret)
   .\cisco-vpn-autologin.ps1                    # connect
   .\cisco-vpn-autologin.ps1 -Disconnect
   .\cisco-vpn-autologin.ps1 -Code              # print the current code (e.g. for ssh)
   .\cisco-vpn-autologin.ps1 -DryRun            # show what would be sent to vpncli, secrets masked
   .\cisco-vpn-autologin.ps1 -Name work -Setup  # keep several VPNs side by side
+  .\cisco-vpn-autologin.ps1 -Uninstall         # remove shortcuts, installed script and saved logins
 
 .LINK
   https://github.com/jiahaozhang2025/cisco-vpn-autologin
@@ -24,12 +27,14 @@
 [CmdletBinding()]
 param(
     [string]$Name = 'default',   # settings profile, for more than one VPN
+    [switch]$Install,            # setup, then copy this script and make desktop / Start menu shortcuts
+    [switch]$Uninstall,          # remove the shortcuts, the installed script and all saved logins
     [switch]$Setup,
     [switch]$Code,
     [switch]$Disconnect,
     [switch]$DryRun,
     [switch]$Force,              # ignore the retry block after a failed login
-    [switch]$Pause               # keep the window open on errors (for desktop shortcuts)
+    [switch]$Pause               # keep the window open on errors and after messages (for shortcuts)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,11 +42,16 @@ $Dir          = Join-Path $env:APPDATA 'cisco-vpn-autologin'
 $SettingsFile = Join-Path $Dir "$Name.psd1"
 $SecretsFile  = Join-Path $Dir "$Name.xml"
 $FailFile     = Join-Path $Dir "$Name.last-failure"
+$AppDir       = Join-Path $env:LOCALAPPDATA 'Programs\cisco-vpn-autologin'
+$AppScript    = Join-Path $AppDir 'cisco-vpn-autologin.ps1'
+$MenuDir      = Join-Path ([Environment]::GetFolderPath('Programs')) 'Cisco VPN Auto-Login'
 $DefaultAnswers = @('{user}', '{password}', '{code}', 'y')
+
+function Close-Window { if ($Pause) { Read-Host 'Press Enter to close' | Out-Null } }
 
 function Fail([string]$msg) {
     Write-Host $msg -ForegroundColor Red
-    if ($Pause) { Read-Host 'Press Enter to close' | Out-Null }
+    Close-Window
     exit 1
 }
 
@@ -169,8 +179,65 @@ function Stop-VpnUi {
 }
 function Start-VpnUi { if (Test-Path $Client.Ui) { Start-Process $Client.Ui } }
 
+# --- install --------------------------------------------------------------------------------
+function New-Shortcut([string]$Path, [string]$Arguments) {
+    $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
+    $lnk.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $lnk.Arguments  = "-NoProfile -ExecutionPolicy Bypass -File `"$AppScript`" $Arguments"
+    if (Test-Path $Client.Ui) { $lnk.IconLocation = "$($Client.Ui),0" }
+    $lnk.Save()
+}
+
+function Invoke-Install {
+    if (-not $Client) {
+        Fail "Cisco Secure Client / AnyConnect not found. Install it from your organisation's VPN page first, then run this again."
+    }
+    Invoke-Setup
+    New-Item -ItemType Directory -Force $AppDir, $MenuDir | Out-Null
+    # Compare contents, not paths: the installed copy can show up under a short (8.3) path.
+    if (-not (Test-Path $AppScript) -or (Get-FileHash $AppScript).Hash -ne (Get-FileHash -LiteralPath $PSCommandPath).Hash) {
+        Copy-Item -LiteralPath $PSCommandPath $AppScript -Force
+    }
+    Unblock-File $AppScript
+
+    # A second VPN (-Name work) gets its own shortcuts: "Cisco VPN Connect (work)".
+    $suffix = if ($Name -ne 'default') { " ($Name)" } else { '' }
+    $arg    = if ($Name -ne 'default') { "-Name `"$Name`" " } else { '' }
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    foreach ($folder in $desktop, $MenuDir) {
+        New-Shortcut "$folder\Cisco VPN Connect$suffix.lnk"    "$arg-Pause"
+        New-Shortcut "$folder\Cisco VPN Disconnect$suffix.lnk" "$arg-Disconnect -Pause"
+    }
+    New-Shortcut "$MenuDir\Show 2FA code$suffix.lnk"     "$arg-Code -Pause"
+    New-Shortcut "$MenuDir\Change VPN login$suffix.lnk"  "$arg-Setup -Pause"
+    New-Shortcut "$MenuDir\Uninstall.lnk"                '-Uninstall -Pause'
+
+    Write-Host "Installed. Your desktop now has 'Cisco VPN Connect$suffix' and 'Cisco VPN Disconnect$suffix'." -ForegroundColor Green
+    Write-Host "The Start menu folder 'Cisco VPN Auto-Login' also has: Show 2FA code, Change VPN login, Uninstall." -ForegroundColor Green
+}
+
+function Invoke-Uninstall {
+    if ((Read-Host 'Remove Cisco VPN Auto-Login, its shortcuts and all saved logins? [y/N]') -notmatch '^y') {
+        Write-Host 'Nothing removed.'
+        return
+    }
+    $shell = New-Object -ComObject WScript.Shell
+    Get-ChildItem ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk |
+        Where-Object { $shell.CreateShortcut($_.FullName).Arguments -match [regex]::Escape($AppScript) } |
+        Remove-Item
+    Set-Location $env:USERPROFILE   # can't delete a folder we are standing in
+    Remove-Item $MenuDir, $Dir, $AppDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host 'Removed. (If the VPN is connected, it stays connected until you disconnect in Cisco.)' -ForegroundColor Green
+}
+
 # --- main -----------------------------------------------------------------------------------
-if ($Setup) { Invoke-Setup; return }
+if ($Uninstall) { Invoke-Uninstall; Close-Window; return }
+if ($Install) {
+    Invoke-Install
+    if ((Read-Host 'Connect to the VPN now? [Y/n]') -match '^n') { return }
+} elseif ($Setup) {
+    Invoke-Setup; Close-Window; return
+}
 if (-not (Test-Path $SettingsFile) -or -not (Test-Path $SecretsFile)) { Invoke-Setup }
 $settings = Import-PowerShellDataFile $SettingsFile
 $secrets  = Import-Clixml $SecretsFile
@@ -179,6 +246,7 @@ if ($Code) {
     $s = Get-TotpSpec $secrets.Secret
     $left = $s.Period - ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() % $s.Period)
     Write-Host "$(Get-Totp $s.Key $s.Digits $s.Period $s.Algorithm)  (valid ~$left s)"
+    Close-Window
     return
 }
 
