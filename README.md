@@ -4,11 +4,16 @@
 
 If your VPN login means opening Cisco Secure Client, typing your password, unlocking your phone
 and copying a 6-digit code from your authenticator app, this does all of it for you.
-Set it up once, then **double-click to connect**.
+Set it up once, then **connect with one click**.
 
 | Before | After |
 | --- | --- |
-| Open Cisco, click Connect, type password, find phone, open authenticator app, type code, click OK | Double-click a desktop shortcut |
+| Open Cisco, click Connect, type password, find phone, open authenticator app, type code, click OK | Open **Cisco VPN**, click **Connect** |
+
+<img src="docs/window.png" width="340" alt="The Cisco VPN window: connection status, a Disconnect button, the current 2FA code with a Copy button, and links to change the login or uninstall">
+
+One small window shows whether you're connected, connects and disconnects with one button, and
+shows your current 2FA code with a Copy button (handy for SSH logins that ask for it).
 
 Works on **Windows** with **Cisco Secure Client** or **AnyConnect**, for VPNs that ask for a password
 plus a 6-digit code from an authenticator app (Google Authenticator, Duo Mobile, Microsoft
@@ -22,15 +27,12 @@ Authenticator, ...). Not for browser/SSO logins or Duo **push**.
    `otpauth://...secret=...` link, and you can paste that instead.
 2. **[Download the zip](https://github.com/jiahaozhang2025/cisco-vpn-autologin/archive/refs/heads/main.zip)**
    and unzip it (right-click it, then *Extract All*).
-3. **Double-click `Install.cmd`** and answer four questions: VPN server, username, password and
-   secret key. It shows the current code so you can check it against your phone, then offers to
-   connect. If Windows warns about a downloaded file, choose *Run* (or *More info*, then *Run anyway*).
+3. **Double-click `Install.cmd`.** A form asks for your VPN server, username, password and secret
+   key, and shows the current code so you can check it against your phone. Click *Save*, then
+   *Connect*. If Windows warns about a downloaded file, choose *Run* (or *More info*, then *Run anyway*).
 
-Done. You now have:
-
-- **Cisco VPN Connect** and **Cisco VPN Disconnect** on your desktop.
-- A Start menu folder, *Cisco VPN Auto-Login*, with the same two plus **Show 2FA code** (for SSH
-  logins that ask for the code), **Change VPN login** (new password or key) and **Uninstall**.
+Done. From now on, open **Cisco VPN** from your desktop or Start menu. *Change login* (new password
+or key) and *Uninstall* are in the same window.
 
 ## Why this one?
 
@@ -38,7 +40,7 @@ Other Cisco auto-login scripts exist. This one is built to be the least hassle:
 
 | | Cisco VPN Auto-Login | Typical alternatives |
 | --- | --- | --- |
-| Setup | Double-click, answer 4 questions | Edit a script, or paste commands into PowerShell |
+| Setup | Double-click, fill in one form | Edit a script, or paste commands into PowerShell |
 | Needs | Nothing extra: just Windows and Cisco | Python, PowerShell 7 or extra modules |
 | 2FA code | Generated and typed for you | Only the password is saved; you still type the code |
 | Your password | Encrypted by Windows | Often in plain text inside the script |
@@ -56,9 +58,9 @@ Other Cisco auto-login scripts exist. This one is built to be the least hassle:
 ## Troubleshooting
 
 - **"Authentication failed"**: repeated failures can lock your VPN account, so it won't retry for
-  10 minutes. Log in once by hand. If that works, run *Change VPN login* from the Start menu in case
-  the saved password is wrong. If the code is rejected, check that your secret key hasn't been
-  revoked or replaced.
+  10 minutes (it asks before trying sooner). Log in once by hand. If that works, use *Change login*
+  in case the saved password is wrong. If the code is rejected, check that your secret key hasn't
+  been revoked or replaced.
 - **"Please unzip the download first"**: you double-clicked `Install.cmd` inside the zip. Extract
   the zip, then run it from the extracted folder.
 - **Your VPN asks other questions** (for example a group): edit `Answers` in
@@ -72,8 +74,8 @@ Other Cisco auto-login scripts exist. This one is built to be the least hassle:
 <summary><b>For command-line users</b></summary>
 
 `Install.cmd` just runs `cisco-vpn-autologin.ps1 -Install`, which copies the script to
-`%LOCALAPPDATA%\Programs\cisco-vpn-autologin` and makes the shortcuts. You can also run the script
-directly:
+`%LOCALAPPDATA%\Programs\cisco-vpn-autologin`, makes the shortcuts and opens the window. You can
+also run the script directly:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\cisco-vpn-autologin.ps1 <option>
@@ -81,14 +83,15 @@ powershell -ExecutionPolicy Bypass -File .\cisco-vpn-autologin.ps1 <option>
 
 | Option | What it does |
 | --- | --- |
-| *(none)* | Connect |
+| *(none)* | Connect, without the window |
+| `-Gui` | Open the window |
 | `-Disconnect` | Disconnect |
 | `-Code` | Show the current 6-digit code |
 | `-Setup` | Change server, username, password or secret key |
 | `-DryRun` | Show what would be sent to the VPN, with password and code hidden |
 | `-Force` | Connect even within 10 minutes of a failed login |
-| `-Name work` | Use a separate profile for a second VPN (`-Name work -Install` gives it its own shortcuts) |
-| `-Install` / `-Uninstall` | What `Install.cmd` and the *Uninstall* shortcut do |
+| `-Name work` | Use a separate profile for a second VPN (`-Name work -Install` gives it its own *Cisco VPN (work)* shortcut) |
+| `-Install` / `-Uninstall` | What `Install.cmd` and the window's *Uninstall* link do |
 
 </details>
 

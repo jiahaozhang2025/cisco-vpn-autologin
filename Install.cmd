@@ -1,6 +1,6 @@
 @echo off
-rem Double-click to install: asks for your VPN login once, then puts
-rem "Cisco VPN Connect" and "Cisco VPN Disconnect" on your desktop.
+rem Double-click to install: puts a "Cisco VPN" shortcut on your desktop and in the Start menu,
+rem then opens a small window that asks for your VPN login once.
 setlocal
 set "SCRIPT=%~dp0cisco-vpn-autologin.ps1"
 if not exist "%SCRIPT%" (
@@ -12,6 +12,4 @@ if not exist "%SCRIPT%" (
 )
 rem Clear the "downloaded from the internet" mark so Windows lets the script run.
 powershell.exe -NoProfile -Command "Unblock-File -LiteralPath $env:SCRIPT"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -Install
-echo.
-pause
+start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SCRIPT%" -Install
