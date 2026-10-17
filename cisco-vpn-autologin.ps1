@@ -170,7 +170,7 @@ function Save-Login([string]$VpnHost, [string]$User, [securestring]$Password, [s
 function Invoke-Setup {
     $old = Read-Settings
     $vpnHost = Read-Default 'VPN server' $old.Host
-    $user    = Read-Default 'Username (including any @realm)' $old.User
+    $user    = Read-Default 'Username, exactly as you type it into Cisco' $old.User
     $pw = Read-Host 'Password' -AsSecureString
     if ((Unprotect $pw) -cne (Unprotect (Read-Host 'Same password again' -AsSecureString))) { Fail 'Passwords did not match - nothing saved.' }
     $secret = Read-Host '2FA secret key - not the 6-digit code (or the otpauth:// link)' -AsSecureString
@@ -301,8 +301,11 @@ $LoginXaml = @'
   <StackPanel Margin="22,18,22,18">
     <TextBlock Text="VPN server"/>
     <TextBox x:Name="VpnHost" Padding="3" Margin="0,2,0,10"/>
-    <TextBlock Text="Username (including any @realm)"/>
-    <TextBox x:Name="User" Padding="3" Margin="0,2,0,10"/>
+    <TextBlock Text="Username, exactly as you type it into Cisco"/>
+    <TextBox x:Name="User" Padding="3" Margin="0,2,0,2"/>
+    <TextBlock x:Name="UserHint" TextWrapping="Wrap" Foreground="#B00020" FontSize="12" Visibility="Collapsed"
+               Text="For the FASRC VPN this is yourname@fasrc (not @login.rc.fas.harvard.edu)."/>
+    <Border Height="8"/>
     <TextBlock x:Name="PwLabel" Text="Password"/>
     <PasswordBox x:Name="Pw" Padding="3" Margin="0,2,0,6"/>
     <TextBlock Text="Password again"/>
@@ -479,6 +482,9 @@ function Show-LoginWindow {
 
 function Update-LoginCheck {   # live "code now: ..." so the key can be checked against the phone
     $d = $script:Login
+    # The most common mistake: FASRC's VPN realm is @fasrc, not the SSH login host.
+    $user = $d.User.Text.Trim()
+    $d.UserHint.Visibility = if ($d.VpnHost.Text -match 'rc\.fas\.harvard\.edu' -and $user -and $user -notmatch '@fasrc$') { 'Visible' } else { 'Collapsed' }
     $secret = if ($d.Secret.SecurePassword.Length) { $d.Secret.SecurePassword } elseif ($script:Saved) { $script:Saved.Secret }
     if (-not $secret) { $d.Check.Text = ''; return }
     try {
@@ -632,8 +638,8 @@ if ((Get-VpnState) -eq 'Connected') {
     if ($authFailed) {
         (Get-Date).ToString('o') | Set-Content $FailFile
         Fail ("Login failed. Not retrying for $block min (repeated failures can lock your account). " +
-              "Log in once by hand in Cisco: if that works, update the saved password (Change login, " +
-              "or -Setup); if the code is rejected, check the secret was not revoked and that your clock is right.")
+              "Check the saved username and password (Change login, or -Setup): log in once by hand in Cisco " +
+              "with exactly the same ones. If the code is rejected, check the key was not revoked and that your clock is right.")
     }
     Fail 'Not connected.'
 }
